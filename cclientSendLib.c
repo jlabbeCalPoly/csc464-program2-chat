@@ -6,7 +6,13 @@
 #include "flags.h"
 #include "handlePDU.h"
 
-// Basic function for sending packets to the server
+/** 
+ * Basic function for sending packets to the server
+ * 
+ * @param socketNum The client socket number
+ * @param dataBuffer The buffer containing the pdu data
+ * @param lengthOfData The length of the data in the buffer
+ */
 void sendToServer(int socketNum, uint8_t *dataBuffer, int lengthOfData) {	
 	int sent = sendPDU(socketNum, dataBuffer, lengthOfData);
 	if (sent < 0) {
@@ -46,15 +52,4 @@ void validateAndSendClientHandle(int socketNum, char *handle, int MAXBUF) {
 
 	// Send data to the server
 	sendToServer(socketNum, dataBuffer, lengthOfData);
-}
-
-/**
- * parse and validate the input from stdin, then send to the server if the input meets requirements
- * 
- * @param socketNum The socket number for the client socket
- * @param dataBuffer The buffer containing the input
- * @param lengthOfData The length of the entire input
- */
-void parseAndSendStdin(int socketNum, uint8_t *dataBuffer, int lengthOfData) {
-    sendToServer(socketNum, dataBuffer, lengthOfData);
 }

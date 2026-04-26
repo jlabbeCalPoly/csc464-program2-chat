@@ -63,8 +63,10 @@ void serverControl(int portNumber) {
 void processMsgFromClient(int clientSocket, uint8_t *dataBuffer, int messageLen) {
 	uint8_t flag = getFlag(dataBuffer);
 	printf("Flag: %d\n", flag);
-	if(flag == CLIENT_HANDLE_FLAG) {
+	if (flag == CLIENT_HANDLE_FLAG) {
 		validateAndAddClientHandle(clientSocket, dataBuffer + 1, messageLen - 1);
+	} else if (flag == UNICAST_FLAG) {
+		sendUnicast(dataBuffer + 1, messageLen - 1);
 	}
 }
 

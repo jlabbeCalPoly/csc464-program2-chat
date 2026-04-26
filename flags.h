@@ -8,7 +8,7 @@ extern const uint8_t HANDLE_GOOD_FLAG;
 extern const uint8_t HANDLE_BAD_FLAG;
 extern const uint8_t BROADCAST_FLAG;
 extern const uint8_t UNICAST_FLAG;
-extern const uint8_t MUTLICAST_FLAG;
+extern const uint8_t MULTICAST_FLAG;
 extern const uint8_t CAST_ERROR_FLAG;
 extern const uint8_t GET_HANDLES_FLAG;
 extern const uint8_t TOTAL_HANDLES_FLAG;

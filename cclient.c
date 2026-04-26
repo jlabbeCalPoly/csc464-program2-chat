@@ -30,6 +30,7 @@
 #include "flags.h"
 
 #define MAXBUF 1400
+#define MAXTEXT 199
 #define DEBUG_FLAG 1
 
 void processMsgFromServer(int socketNum) {
@@ -68,38 +69,194 @@ void processMsgFromServer(int socketNum) {
 	}
 }
 
-int readFromStdin(uint8_t * buffer) {
-	char aChar = 0;
-	int inputLen = 0;        
-	
-	// Important you don't input more characters than you have space 
-	buffer[0] = '\0';
-	while (inputLen < (MAXBUF - 1) && aChar != '\n')
-	{
+// In the event an error occurs when parsing stdin, clear the rest of it before the next input
+void clearStdin(uint8_t endOnNewline) {
+	// Avoid blocking in the event the entire input has already been consumed
+	if (endOnNewline == 1) {
+		return;
+	}
+
+	int aChar = 0;
+	while (aChar != '\n' && aChar != EOF) {
 		aChar = getchar();
-		if (aChar != '\n')
-		{
+	}
+}
+
+// Reads the text part of the client message (only ends on newline)
+int readFromStdinText(uint8_t *buffer, uint8_t *endOnNewline) {
+	int aChar = 0;
+	int inputLen = 0;        
+
+	while (aChar != '\n') {
+		// Return an error if there's not enough space in the buffer
+		if (inputLen == MAXBUF) {
+			return -1;
+		}
+
+		aChar = getchar();
+		if (aChar == '\n') {
+			*endOnNewline = 1;
+		}
+		buffer[inputLen] = aChar;
+		inputLen++;
+	}
+	return inputLen;
+}
+
+// Read into the provided buffer for the given amount of values in stdin, then return the amount of bytes read or -1 if an error occured (already reached the end of stdin)
+int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
+	int aChar = 0;
+	int inputLen = 0;        
+
+	while (aChar != '\n' && aChar != ' ') {
+		// Return an error if there's not enough space in the buffer
+		if (inputLen == MAXBUF) {
+			return -1;
+		}
+
+		aChar = getchar();
+		if (aChar == '\n') {
+			*endOnNewline = 1;
+		} else if (aChar != ' ') {
 			buffer[inputLen] = aChar;
 			inputLen++;
 		}
 	}
-	
-	// Null terminate the string
-	buffer[inputLen] = '\0';
-	inputLen++;
-	
 	return inputLen;
 }
 
-void processStdin(int socketNum) {
-	uint8_t dataBuffer[MAXBUF];   //data buffer
-	int lengthOfData = 0;         //amount of data to send
-	
-	lengthOfData = readFromStdin(dataBuffer);
-	// debug
-	// printf("read: %s string len: %d (including null)\n", dataBuffer, lengthOfData);
+void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *textBuffer, int textLength) {
+	int prevTextTaken = 0;
+	while (prevTextTaken < textLength) {
+		uint8_t sendBuffer[MAXBUF];
+		// Determine how much text to include in the following send to the server
+		int totalAfterTake = prevTextTaken + 199;
+		int textSendLength = totalAfterTake <= textLength ? 199 : textLength - totalAfterTake;
 
-	parseAndSendStdin(socketNum, dataBuffer, lengthOfData);
+		// Copy the header into the sendBuffer
+		memcpy(sendBuffer, headerBuffer, headerLength);
+
+		// Copy the text into the sendBuffer
+		memcpy(sendBuffer + headerLength, textBuffer + prevTextTaken, textSendLength);
+
+		// Send to the server
+		sendToServer(socketNum, sendBuffer, headerLength + textSendLength);
+
+		// Update the values of prevTextTaken for the next iteration
+		prevTextTaken += textSendLength;
+	}
+}
+
+int parseStdinHeaderUnicast(uint8_t *buffer, uint8_t *endOnNewline) {
+	uint8_t handleBuffer[MAXBUF];
+	int handleLength = 0;
+	if ((handleLength = readFromStdinSplit(handleBuffer, endOnNewline)) == -1) {
+		return -1;
+	}
+
+	// Account for the length field in the handle buffer
+	int handleBufferLength = handleLength + 1;
+	if (handleBufferLength > MAXBUF) {
+		return -1;
+	}
+	
+	// Copy contents to the buffer, then return the handleLength + 1 (accounting for the length field)
+	memcpy(buffer, &handleLength, 1);
+	memcpy(buffer + 1, handleBuffer, handleLength);
+
+	return handleBufferLength;
+}
+
+// Returns the length of the header or -1 if an error is encountered
+int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
+	uint8_t commandBuffer[MAXBUF];
+	int commandBufferLength = 0;
+	// expecting the command length to be exactly two. Immediate errors if it's not
+	if ((commandBufferLength = readFromStdinSplit(commandBuffer, endOnNewline)) != 2) {
+		return -1;
+	}
+
+	uint8_t flag = 0;
+	uint8_t handleBuffer[MAXBUF];
+	int handleBufferLength = 0;
+	if (memcmp(commandBuffer, "%%M", 2) == 0 || memcmp(commandBuffer, "%%m", 2) == 0) {
+		flag = UNICAST_FLAG;
+		handleBufferLength = parseStdinHeaderUnicast(handleBuffer, endOnNewline);
+	} else {
+		// Invalid command
+		return -1;
+	}
+
+	// Determine if the contents won't exceed the size of the header buffer
+	int headerBufferLength = 1 + handleBufferLength;
+	if (handleBufferLength == -1 || headerBufferLength > MAXBUF) {
+		return -1;
+	}
+
+	// Copy the flag and handleBuffer data into the headerBuffer
+	memcpy(headerBuffer, &flag, 1);
+	memcpy(headerBuffer + 1, handleBuffer, handleBufferLength);
+
+	return headerBufferLength;
+}
+
+int parseStdinText(uint8_t *textBuffer, uint8_t *endOnNewline) {
+	int textBufferLength = 0;
+	if ((textBufferLength = readFromStdinText(textBuffer, endOnNewline)) == -1) {
+		return -1;
+	}
+
+	return textBufferLength;
+}
+
+// Process the input and send data to the server in the event parsing completes successfully
+void processStdin(int socketNum) {
+	uint8_t endOnNewline = 0;
+	uint8_t headerBuffer[MAXBUF];
+	int headerLength;
+	if ((headerLength = parseStdinHeader(headerBuffer, &endOnNewline)) == -1) {
+		clearStdin(endOnNewline);
+
+		// debug
+		printf("Error: Failed to parse the stdin header\n");
+
+		// Put the prompt “$: “ back out
+		printf("$: ");
+		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		return;
+	}
+
+	uint8_t textBuffer[MAXBUF];
+	int textLength;
+	if ((textLength = parseStdinText(textBuffer, &endOnNewline)) == -1) {
+		clearStdin(endOnNewline);
+
+		// debug
+		printf("Error: Failed to parse the stdin text\n");
+
+		// Put the prompt “$: “ back out
+		printf("$: ");
+		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		return;
+	}
+
+	// If the length of the header and text exceeds 1400 bytes, print an error message and continue
+	if (headerLength + textLength > 1400) {
+		clearStdin(endOnNewline);
+
+		printf("Error: Input too large, max of 1400 input characters\n");
+
+		// Put the prompt “$: “ back out
+		printf("$: ");
+		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		return;
+	}
+
+	sendData(socketNum, headerBuffer, headerLength, textBuffer, textLength);
+
+	// Put the prompt “$: “ back out
+	printf("$: ");
+	fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
 }
 
 void clientControl(int socketNum, char *handle) {

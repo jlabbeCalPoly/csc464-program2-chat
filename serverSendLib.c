@@ -49,3 +49,14 @@ void validateAndAddClientHandle(int clientSocket, uint8_t *payload, int payloadL
 	lengthOfData += addFlagToBuffer(dataBuffer, HANDLE_GOOD_FLAG);
 	sendPDU(clientSocket, dataBuffer, lengthOfData);
 }
+
+/**
+ * send a unicast to the provided client, if any
+ * 
+ * @param clientSocket The socket that the client is currently connected to on the server
+ * @param payload Pointer to the memory location of the message payload
+ * @param payloadLength The length of the payload
+ */
+void sendUnicast(int clientSocket, uint8_t *dataBuffer, int lengthOfData) {
+    
+}

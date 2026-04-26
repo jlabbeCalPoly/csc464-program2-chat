@@ -116,7 +116,8 @@ void removeFromHandleTable(int socket) {
         struct handleEntry entry = handleTable[index];
         printf("Entry socket: %d\n", entry.socket);
         if (entry.socket == socket) {
-            entry.active = INACTIVE_HANDLE;
+            // Need to update the table directly
+            handleTable[index].active = INACTIVE_HANDLE;
 
             // debug
             printf("Successfully deactivated handle: %s\n", entry.handle);
