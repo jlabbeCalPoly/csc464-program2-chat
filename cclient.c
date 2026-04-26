@@ -33,6 +33,13 @@
 #define MAXTEXT 199
 #define DEBUG_FLAG 1
 
+// Basic function to put the prompt back on the screen, that way I don't have to copy it each time
+void flushPrompt() {
+	// Put the prompt “$: “ back out
+	printf("$: ");
+	fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+}
+
 void processMsgFromServer(int socketNum) {
 	uint8_t dataBuffer[MAXBUF];
 	int messageLen = 0;
@@ -47,26 +54,31 @@ void processMsgFromServer(int socketNum) {
 		// printf("Flag: %d\n", flag);
 		
 		if (flag == HANDLE_GOOD_FLAG) {
-			/*
-				Nothing actually happens on the client (other than program continuing) when the handle is validated by the server, 
-				I just have this here for proof I've considered it
-			*/
+			flushPrompt();
 		} else if (flag == HANDLE_BAD_FLAG) {
 			printf("\n");
 			onRecvBadHandle();
+			flushPrompt();
 		} else if (flag == UNICAST_FLAG) {
 			printf("\n");
 			onRecvMessage(dataBuffer + 1, messageLen - 1);
+			flushPrompt();
 		} else if (flag == CAST_ERROR_FLAG) {
 			printf("\n");
-			onRecvCastError(dataBuffer + 1, messageLen - 1);
+			onRecvCastError(dataBuffer + 1);
+			flushPrompt();
+		} else if (flag == TOTAL_HANDLES_FLAG) {
+			printf("\n");
+			onRecvTotalHandles(dataBuffer + 1);
+		} else if (flag == SENT_HANDLE_FLAG) {
+			onRecvSentHandle(dataBuffer + 1, messageLen - 1);
+		} else if (flag == DONE_SENDING_HANDLES_FLAG) {
+			flushPrompt();
 		} else {
 			// debug
 			printf("\nUnknown flag\n");
+			flushPrompt();
 		}
-		// Put the prompt “$: “ back out
-		printf("$: ");
-		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
 	} else {
 		// Server terminated, so exit the program
 		printf("Server terminated");
@@ -89,6 +101,11 @@ void clearStdin(uint8_t endOnNewline) {
 
 // Reads the text part of the client message (only ends on newline)
 int readFromStdinText(uint8_t *buffer, uint8_t *endOnNewline) {
+	// Avoid blocking in the event the entire input has already been consumed
+	if (*endOnNewline == 1) {
+		return 0;
+	}
+
 	int aChar = 0;
 	int inputLen = 0;        
 
@@ -111,6 +128,11 @@ int readFromStdinText(uint8_t *buffer, uint8_t *endOnNewline) {
 
 // Read into the provided buffer for the given amount of values in stdin, then return the amount of bytes read or -1 if an error occured (already reached the end of stdin)
 int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
+	// Avoid blocking in the event the entire input has already been consumed
+	if (*endOnNewline == 1) {
+		return 0;
+	}
+
 	int aChar = 0;
 	int inputLen = 0;        
 
@@ -135,7 +157,8 @@ void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *t
 	// printf("Text length: %d\n", textLength);
 
 	int prevTextTaken = 0;
-	while (prevTextTaken < textLength) {
+	
+	do {
 		uint8_t sendBuffer[MAXBUF];
 		// Determine how much text to include in the following send to the server
 		int totalAfterTake = prevTextTaken + 199;
@@ -153,7 +176,7 @@ void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *t
 
 		// Update the values of prevTextTaken for the next iteration
 		prevTextTaken += textSendLength;
-	}
+	} while (prevTextTaken < textLength);
 }
 
 int parseStdinHeaderUnicast(uint8_t *buffer, uint8_t *endOnNewline) {
@@ -188,9 +211,15 @@ int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
 	uint8_t flag = 0;
 	uint8_t handleBuffer[MAXBUF];
 	int handleBufferLength = 0;
+	// Unicast
 	if (memcmp(commandBuffer, "%M", 2) == 0 || memcmp(commandBuffer, "%m", 2) == 0) {
 		flag = UNICAST_FLAG;
 		handleBufferLength = parseStdinHeaderUnicast(handleBuffer, endOnNewline);
+	// Get active handles
+	} else if (memcmp(commandBuffer, "%L", 2) == 0 || memcmp(commandBuffer, "%l", 2) == 0) {
+		flag = GET_HANDLES_FLAG;
+		// No handles are expected on the %L command, so set it's length to 0
+		handleBufferLength = 0;
 	} else {
 		// Invalid command
 		return -1;
@@ -230,8 +259,7 @@ void processStdin(int socketNum) {
 		printf("Error: Failed to parse the stdin header\n");
 
 		// Put the prompt “$: “ back out
-		printf("$: ");
-		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		flushPrompt();
 		return;
 	}
 
@@ -244,8 +272,7 @@ void processStdin(int socketNum) {
 		printf("Error: Failed to parse the stdin text\n");
 
 		// Put the prompt “$: “ back out
-		printf("$: ");
-		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		flushPrompt();
 		return;
 	}
 
@@ -256,16 +283,14 @@ void processStdin(int socketNum) {
 		printf("Error: Input too large, max of 1400 input characters\n");
 
 		// Put the prompt “$: “ back out
-		printf("$: ");
-		fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+		flushPrompt();
 		return;
 	}
 
 	sendData(socketNum, headerBuffer, headerLength, textBuffer, textLength);
 
 	// Put the prompt “$: “ back out
-	printf("$: ");
-	fflush(stdout); // Need this since $: won't print on its own when I want due to output buffering
+	flushPrompt();
 }
 
 void clientControl(int socketNum, char *handle) {

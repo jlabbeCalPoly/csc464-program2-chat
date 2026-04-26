@@ -12,5 +12,7 @@ int addToHandleTable(uint8_t handle[], uint8_t handleLength, int socket, int ind
 void removeFromHandleTable(int socket);
 int getSocketFromHandle(uint8_t handle[]);
 int getHandleFromSocket(int socket, uint8_t handleBuffer[]);
+int getHandleIfActive(int index, uint8_t handleBuffer[]);
+int getActiveHandles();
 
 #endif

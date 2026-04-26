@@ -19,6 +19,7 @@ struct handleEntry {
 
 int addedToHandleTable = 0; // The amount of elements that HAVE BEEN ADDED to the handle table
 int maxUntilHandleTableResize = 1; // The maximum amount of handles the current handle table can hold
+int activeHandles = 0; // The amount of active handles in the table
 struct handleEntry *handleTable;
 
 /**
@@ -97,6 +98,7 @@ void addToHandleTable(uint8_t handle[], uint8_t handleLength, int socket, int in
     entry->active = ACTIVE_HANDLE;
 
     addedToHandleTable += 1;
+    activeHandles += 1;
     handleTable[index] = *entry;
 
     // debug
@@ -120,6 +122,7 @@ void removeFromHandleTable(int socket) {
         if (entry.socket == socket && entry.active == ACTIVE_HANDLE) {
             // Need to update the table directly
             handleTable[index].active = INACTIVE_HANDLE;
+            activeHandles -= 1;
 
             // debug
             printf("Successfully deactivated handle: %s\n", entry.handle);
@@ -176,4 +179,34 @@ int getHandleFromSocket(int socket, uint8_t handleBuffer[]) {
     }
 
     return -1;
+}
+
+/**
+ * Retrieves the handle at the given INDEX in handleTable (if exists). 
+ * Returns the length of the handle and the handle name in the handleBuffer, or 0 if inactive
+ * Returns -1 if the index would be out of bounds
+ * 
+ * @param index The index in the handleTable to search for
+ * @param handleBuffer Where the handle name will be stored on success
+ */
+int getHandleIfActive(int index, uint8_t handleBuffer[]) {
+    // Check if the index is out of bounds
+    if (index >= addedToHandleTable) {
+        return -1;
+    }
+
+    struct handleEntry entry = handleTable[index];
+    if (entry.active == ACTIVE_HANDLE) {
+        memcpy(handleBuffer, entry.handle, MAX_HANDLE_LEN);
+        return entry.handleLength;
+    } else {
+        return 0;
+    }
+}
+
+/**
+ * Simply returns the number of active handles in the table, useful for putting together packets that use flag = TOTAL_HANDLES_FLAG
+ */
+int getActiveHandles() {
+    return activeHandles;
 }
