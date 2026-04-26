@@ -23,11 +23,29 @@ void onRecvMessage(uint8_t *dataBuffer, int lengthOfData) {
     handleBuffer[handleLength] = '\0';
 
     uint8_t messageLength = lengthOfData - handleLength - 1;
+
+    // debug
+    // printf("Handle length: %d  Message length: %d\n", handleLength, messageLength);
+
     // Space for the message, also accounting for the null so it can be printed easily
     uint8_t messageBuffer[messageLength + 1];
     memcpy(messageBuffer, dataBuffer + handleLength + 1, messageLength);
     messageBuffer[messageLength] = '\0';
 
-    // Print out the message:
+    // Print out the message
     printf("%s: %s\n", handleBuffer, messageBuffer);
+}
+
+void onRecvCastError(uint8_t *dataBuffer, int lengthOfData) {
+    // First byte is the destination client's handle length
+    uint8_t handleLength = 0;
+    memcpy(&handleLength, dataBuffer, 1);
+
+     // Following "handleLength" bytes are the handle itself, also accounting for the null so it can be printed easily
+    uint8_t handleBuffer[handleLength + 1];
+    memcpy(handleBuffer, dataBuffer + 1, handleLength);
+    handleBuffer[handleLength] = '\0';
+
+    // Print out the message
+    printf("Client with the following handle does not exist: %s\n", handleBuffer);
 }

@@ -109,7 +109,7 @@ void sendUnicast(int clientSocket, uint8_t *payload, int payloadLength) {
 	memcpy(messageBuffer, payload + headerLength, messageLength);
 
 	uint8_t fromClientHandleBuffer[100];
-	int fromClientHandleLength = getHandleFromSocket(socket, fromClientHandleBuffer);
+	int fromClientHandleLength = getHandleFromSocket(clientSocket, fromClientHandleBuffer);
 	if (fromClientHandleLength == -1) {
 		// debug
 		printf("Failed to get the from client handle from the socket, failed to send\n");

@@ -5,5 +5,6 @@
 
 void onRecvBadHandle();
 void onRecvMessage(uint8_t *dataBuffer, int lengthOfData);
+void onRecvCastError(uint8_t *dataBuffer, int lengthOfData);
 
 #endif

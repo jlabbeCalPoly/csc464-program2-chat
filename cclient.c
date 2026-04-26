@@ -44,7 +44,7 @@ void processMsgFromServer(int socketNum) {
 
 		uint8_t flag = getFlag(dataBuffer);
 		// debug
-		printf("Flag: %d\n", flag);
+		// printf("Flag: %d\n", flag);
 		
 		if (flag == HANDLE_GOOD_FLAG) {
 			/*
@@ -57,10 +57,12 @@ void processMsgFromServer(int socketNum) {
 		} else if (flag == UNICAST_FLAG) {
 			printf("\n");
 			onRecvMessage(dataBuffer + 1, messageLen - 1);
-		} else {
+		} else if (flag == CAST_ERROR_FLAG) {
 			printf("\n");
+			onRecvCastError(dataBuffer + 1, messageLen - 1);
+		} else {
 			// debug
-			printf("Unknown flag");
+			printf("\nUnknown flag\n");
 		}
 		// Put the prompt “$: “ back out
 		printf("$: ");
@@ -130,7 +132,7 @@ int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
 }
 
 void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *textBuffer, int textLength) {
-	printf("Text length: %d\n", textLength);
+	// printf("Text length: %d\n", textLength);
 
 	int prevTextTaken = 0;
 	while (prevTextTaken < textLength) {
@@ -146,7 +148,7 @@ void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *t
 		memcpy(sendBuffer + headerLength, textBuffer + prevTextTaken, textSendLength);
 
 		// Send to the server
-		printf("Sending header bytes: %d  Sending text bytes: %d\n", headerLength, textSendLength);
+		// printf("Sending header bytes: %d  Sending text bytes: %d\n", headerLength, textSendLength);
 		sendToServer(socketNum, sendBuffer, headerLength + textSendLength);
 
 		// Update the values of prevTextTaken for the next iteration
