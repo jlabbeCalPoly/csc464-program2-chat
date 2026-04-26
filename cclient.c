@@ -54,6 +54,9 @@ void processMsgFromServer(int socketNum) {
 		} else if (flag == HANDLE_BAD_FLAG) {
 			printf("\n");
 			onRecvBadHandle();
+		} else if (flag == UNICAST_FLAG) {
+			printf("\n");
+			onRecvMessage(dataBuffer + 1, messageLen - 1);
 		} else {
 			printf("\n");
 			// debug
@@ -96,9 +99,10 @@ int readFromStdinText(uint8_t *buffer, uint8_t *endOnNewline) {
 		aChar = getchar();
 		if (aChar == '\n') {
 			*endOnNewline = 1;
+		} else {
+			buffer[inputLen] = aChar;
+			inputLen++;
 		}
-		buffer[inputLen] = aChar;
-		inputLen++;
 	}
 	return inputLen;
 }
@@ -126,12 +130,14 @@ int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
 }
 
 void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *textBuffer, int textLength) {
+	printf("Text length: %d\n", textLength);
+
 	int prevTextTaken = 0;
 	while (prevTextTaken < textLength) {
 		uint8_t sendBuffer[MAXBUF];
 		// Determine how much text to include in the following send to the server
 		int totalAfterTake = prevTextTaken + 199;
-		int textSendLength = totalAfterTake <= textLength ? 199 : textLength - totalAfterTake;
+		int textSendLength = totalAfterTake <= textLength ? 199 : textLength - prevTextTaken;
 
 		// Copy the header into the sendBuffer
 		memcpy(sendBuffer, headerBuffer, headerLength);
@@ -140,6 +146,7 @@ void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *t
 		memcpy(sendBuffer + headerLength, textBuffer + prevTextTaken, textSendLength);
 
 		// Send to the server
+		printf("Sending header bytes: %d  Sending text bytes: %d\n", headerLength, textSendLength);
 		sendToServer(socketNum, sendBuffer, headerLength + textSendLength);
 
 		// Update the values of prevTextTaken for the next iteration
@@ -179,7 +186,7 @@ int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
 	uint8_t flag = 0;
 	uint8_t handleBuffer[MAXBUF];
 	int handleBufferLength = 0;
-	if (memcmp(commandBuffer, "%%M", 2) == 0 || memcmp(commandBuffer, "%%m", 2) == 0) {
+	if (memcmp(commandBuffer, "%M", 2) == 0 || memcmp(commandBuffer, "%m", 2) == 0) {
 		flag = UNICAST_FLAG;
 		handleBufferLength = parseStdinHeaderUnicast(handleBuffer, endOnNewline);
 	} else {

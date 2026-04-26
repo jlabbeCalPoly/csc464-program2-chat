@@ -56,13 +56,14 @@ int recvPDU(int clientSocket, uint8_t * dataBuffer, int bufferSize) {
     // debug
     // printf("received header length is: %d\n", lengthHost);
      
-    // Make sure the data length fits within the dataBuffer size
-    if (bufferSize < lengthHost) {
-        perror("dataBuffer is too small\n");
+    // Make sure the data length fits (not inluding the additional bytes for the pdu length field) within the dataBuffer size
+    int dataLength = lengthHost - 2;
+    if (bufferSize <= dataLength) {
+        printf("dataBuffer of size %d is too small for data length %d\n", bufferSize, dataLength);
         exit(-1);
     }
 
     // Second recv(), get the payload (and print the payload contents, if any)
-    int recvPayloadBytes = safeRecv(clientSocket, dataBuffer, lengthHost - 2, MSG_WAITALL);
+    int recvPayloadBytes = safeRecv(clientSocket, dataBuffer, dataLength, MSG_WAITALL);
     return recvPayloadBytes;
 }
