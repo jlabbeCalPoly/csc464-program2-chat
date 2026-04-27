@@ -61,10 +61,13 @@ void processMsgFromServer(int socketNum) {
 		if (flag == HANDLE_GOOD_FLAG) {
 			flushPrompt();
 		} else if (flag == HANDLE_BAD_FLAG) {
-			printf("\n");
 			onRecvBadHandle();
 			flushPrompt();
 		} else if (flag == UNICAST_FLAG) {
+			printf("\n");
+			onRecvMessage(dataBuffer + 1, messageLen - 1);
+			flushPrompt();
+		} else if (flag == MULTICAST_FLAG) {
 			printf("\n");
 			onRecvMessage(dataBuffer + 1, messageLen - 1);
 			flushPrompt();
@@ -233,25 +236,36 @@ int parseStdinHeaderUnicast(uint8_t *buffer, uint8_t *endOnNewline) {
 }
 
 int parseStdinHeaderMulticast(uint8_t *buffer, uint8_t *endOnNewline) {
+	int bufferOffset = addHandleToHeader(buffer);
+
+	// Retrieve the number of handles being sent to, then verify if it's a valid number (must be between 2 and 9)
 	uint8_t handleBuffer[MAXBUF];
 	int handleCountLength = 0;
 	if ((handleCountLength = readFromStdinSplit(handleBuffer, endOnNewline)) == -1 || handleCountLength != 1) {
 		return -1;
 	}
 
+	// Since the handle count will contain the character representation, need to offset it by the ascii value of '0' to get its numeric value
 	uint8_t handleCount;
-	memcpy(&handleCount, handleBuffer, handleCountLength);
+	memcpy(&handleCount, handleBuffer, 1);
+	handleCount -= '0';
+	printf("Handle count: %d\n", handleCount);
+
 	if (handleCount < 2 || handleCount > 9) {
 		return -1;
 	}
 
-	int totalBytes = handleCountLength;
-	memcpy(buffer, &handleCount, 1);
+	buffer[bufferOffset] = handleCount;
+	bufferOffset += 1;
+
 	// Loop through and add the handle data to the buffer, terminating early with -1 if there aren't enough handles or space in the buffer
 	while (handleCount > 0) {
+		if ((bufferOffset = parseHandleFromStdin(buffer, endOnNewline, bufferOffset)) == -1) {
+			return -1;
+		} 
 		handleCount -= 1;
 	}
-	return totalBytes;
+	return bufferOffset;
 }
 
 // Returns the length of the header or -1 if an error is encountered
