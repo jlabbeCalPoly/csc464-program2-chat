@@ -28,10 +28,9 @@ void onRecvMessage(uint8_t *dataBuffer, int lengthOfData) {
     // debug
     // printf("Handle length: %d  Message length: %d\n", handleLength, messageLength);
 
-    // Space for the message, also accounting for the null so it can be printed easily
-    uint8_t messageBuffer[messageLength + 1];
+    // Space for the message (message already has a null byte, so no need to add it)
+    uint8_t messageBuffer[messageLength];
     memcpy(messageBuffer, dataBuffer + handleLength + 1, messageLength);
-    messageBuffer[messageLength] = '\0';
 
     // Print out the message
     printf("%s: %s\n", handleBuffer, messageBuffer);

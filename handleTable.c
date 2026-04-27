@@ -143,37 +143,12 @@ int getSocketFromHandle(uint8_t handle[]) {
     while (index < addedToHandleTable) {
         struct handleEntry entry = handleTable[index];
 
-        printf("Entry handle: %s  Length: %d\n", entry.handle, entry.handleLength);
-        printf("handle: %s\n", handle);
-
         if (memcmp(entry.handle, handle, MAX_HANDLE_LEN) == 0) {
             if (entry.active == ACTIVE_HANDLE) {
                 return entry.socket;
             } else {
                 return -1;
             }
-        }
-        index += 1;
-    }
-
-    return -1;
-}
-
-/**
- * Returns the handle length of the provided handle and stores the handle name in the handleBuffer, or -1 if the handle isn't found
- * 
- * @param socket The socket in the handle table to search for
- * @param handleBuffer Where the handle name will be stored on success
- */
-int getHandleFromSocket(int socket, uint8_t handleBuffer[]) {
-    int index = 0;
-
-    // Continue looping until there are no more entries in the handle table to check or a match is found
-    while (index < addedToHandleTable) {
-        struct handleEntry entry = handleTable[index];
-        if (entry.socket == socket && entry.active == ACTIVE_HANDLE) {
-            memcpy(handleBuffer, entry.handle, MAX_HANDLE_LEN);
-            return entry.handleLength;
         }
         index += 1;
     }

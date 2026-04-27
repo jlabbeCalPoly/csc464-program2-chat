@@ -60,7 +60,8 @@ int recvPDU(int clientSocket, uint8_t * dataBuffer, int bufferSize) {
     int dataLength = lengthHost - 2;
     if (bufferSize <= dataLength) {
         printf("dataBuffer of size %d is too small for data length %d\n", bufferSize, dataLength);
-        exit(-1);
+        // Only use the amount of data that can be fit in the buffer
+        return bufferSize;
     }
 
     // Second recv(), get the payload (and print the payload contents, if any)

@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 void validateAndAddClientHandle(int clientSocket, uint8_t *payload, int payloadLength);
-void sendUnicast(int clientSocket, uint8_t *dataBuffer, int lengthOfData);
+void sendCasts(int clientSocket, uint8_t *payload, int payloadLength, int flag);
 void sendHandles(int clientSocket);
 
 #endif

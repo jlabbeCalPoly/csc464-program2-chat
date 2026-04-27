@@ -66,7 +66,7 @@ void processMsgFromClient(int clientSocket, uint8_t *dataBuffer, int messageLen)
 	if (flag == CLIENT_HANDLE_FLAG) {
 		validateAndAddClientHandle(clientSocket, dataBuffer + 1, messageLen - 1);
 	} else if (flag == UNICAST_FLAG) {
-		sendUnicast(clientSocket, dataBuffer + 1, messageLen - 1);
+		sendCasts(clientSocket, dataBuffer + 1, messageLen - 1, UNICAST_FLAG);
 	} else if (flag == GET_HANDLES_FLAG) {
 		sendHandles(clientSocket);
 	}

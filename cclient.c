@@ -33,6 +33,11 @@
 #define MAXTEXT 199
 #define DEBUG_FLAG 1
 
+// Hold onto the client handle
+char *clientHandle;
+// Hold onto the client handle length
+uint8_t clientHandleLength = 0;
+
 // Basic function to put the prompt back on the screen, that way I don't have to copy it each time
 void flushPrompt() {
 	// Put the prompt “$: “ back out
@@ -153,14 +158,15 @@ int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
 	return inputLen;
 }
 
-void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *textBuffer, int textLength) {
+// Combine the contents of the header and text buffers into one packet to send to the server
+void concatenateAndSendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *textBuffer, int textLength) {
 	// printf("Text length: %d\n", textLength);
 
 	int prevTextTaken = 0;
 	
 	do {
 		uint8_t sendBuffer[MAXBUF];
-		// Determine how much text to include in the following send to the server
+		// Determine how much text to include in the following send to the server (200 max, but accounting for null -> 199)
 		int totalAfterTake = prevTextTaken + 199;
 		int textSendLength = totalAfterTake <= textLength ? 199 : textLength - prevTextTaken;
 
@@ -169,34 +175,83 @@ void sendData(int socketNum, uint8_t *headerBuffer, int headerLength, uint8_t *t
 
 		// Copy the text into the sendBuffer
 		memcpy(sendBuffer + headerLength, textBuffer + prevTextTaken, textSendLength);
+		
+		// Terminate the text string with a null
+		sendBuffer[headerLength + textSendLength] = 0;
 
-		// Send to the server
-		// printf("Sending header bytes: %d  Sending text bytes: %d\n", headerLength, textSendLength);
-		sendToServer(socketNum, sendBuffer, headerLength + textSendLength);
+		// Send to the server, + 1 byte for the lengthOfData parameter since a null byte was added on
+		// printf("Sending header bytes: %d  Sending text bytes (With null): %d\n", headerLength, textSendLength + 1);
+		sendToServer(socketNum, sendBuffer, headerLength + textSendLength + 1);
 
 		// Update the values of prevTextTaken for the next iteration
 		prevTextTaken += textSendLength;
 	} while (prevTextTaken < textLength);
 }
 
-int parseStdinHeaderUnicast(uint8_t *buffer, uint8_t *endOnNewline) {
+// Specific function for parsing a handle from stdin (involves check)
+int parseHandleFromStdin(uint8_t *buffer, uint8_t *endOnNewline, int bufferOffset) {
 	uint8_t handleBuffer[MAXBUF];
 	int handleLength = 0;
 	if ((handleLength = readFromStdinSplit(handleBuffer, endOnNewline)) == -1) {
 		return -1;
 	}
 
+	// A valid handle must be at least 1 character and at most 100 characters
+	if (handleLength < 1 || handleLength > 100) {
+		return -1;
+	}
+
 	// Account for the length field in the handle buffer
 	int handleBufferLength = handleLength + 1;
-	if (handleBufferLength > MAXBUF) {
+	if (handleBufferLength > MAXBUF - bufferOffset) {
 		return -1;
 	}
 	
 	// Copy contents to the buffer, then return the handleLength + 1 (accounting for the length field)
-	memcpy(buffer, &handleLength, 1);
-	memcpy(buffer + 1, handleBuffer, handleLength);
+	memcpy(buffer + bufferOffset, &handleLength, 1);
+	memcpy(buffer + bufferOffset + 1, handleBuffer, handleLength);
 
-	return handleBufferLength;
+	return handleBufferLength + bufferOffset;
+}
+
+// Helper function for adding client's handle and handle length data to the buffer (required for unicast, multicast and broadcast packets), returning the space they take in the buffer
+int addHandleToHeader(uint8_t *buffer) {
+	memcpy(buffer, &clientHandleLength, 1);
+	memcpy(buffer + 1, clientHandle, clientHandleLength);
+
+	return clientHandleLength + 1;
+}
+
+int parseStdinHeaderUnicast(uint8_t *buffer, uint8_t *endOnNewline) {
+	int bufferOffset = addHandleToHeader(buffer);
+
+	// Make the number of client's being sent to as 1
+	buffer[bufferOffset] = 1;
+
+	// Add the destination handle's information to the buffer, accounting for the other information that's already in the buffer
+	return parseHandleFromStdin(buffer, endOnNewline, bufferOffset + 1);
+}
+
+int parseStdinHeaderMulticast(uint8_t *buffer, uint8_t *endOnNewline) {
+	uint8_t handleBuffer[MAXBUF];
+	int handleCountLength = 0;
+	if ((handleCountLength = readFromStdinSplit(handleBuffer, endOnNewline)) == -1 || handleCountLength != 1) {
+		return -1;
+	}
+
+	uint8_t handleCount;
+	memcpy(&handleCount, handleBuffer, handleCountLength);
+	if (handleCount < 2 || handleCount > 9) {
+		return -1;
+	}
+
+	int totalBytes = handleCountLength;
+	memcpy(buffer, &handleCount, 1);
+	// Loop through and add the handle data to the buffer, terminating early with -1 if there aren't enough handles or space in the buffer
+	while (handleCount > 0) {
+		handleCount -= 1;
+	}
+	return totalBytes;
 }
 
 // Returns the length of the header or -1 if an error is encountered
@@ -215,6 +270,10 @@ int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
 	if (memcmp(commandBuffer, "%M", 2) == 0 || memcmp(commandBuffer, "%m", 2) == 0) {
 		flag = UNICAST_FLAG;
 		handleBufferLength = parseStdinHeaderUnicast(handleBuffer, endOnNewline);
+	// Multicast
+	} else if (memcmp(commandBuffer, "%C", 2) == 0 || memcmp(commandBuffer, "%c", 2) == 0) {
+		flag = MULTICAST_FLAG;
+		handleBufferLength = parseStdinHeaderMulticast(handleBuffer, endOnNewline);
 	// Get active handles
 	} else if (memcmp(commandBuffer, "%L", 2) == 0 || memcmp(commandBuffer, "%l", 2) == 0) {
 		flag = GET_HANDLES_FLAG;
@@ -287,7 +346,7 @@ void processStdin(int socketNum) {
 		return;
 	}
 
-	sendData(socketNum, headerBuffer, headerLength, textBuffer, textLength);
+	concatenateAndSendData(socketNum, headerBuffer, headerLength, textBuffer, textLength);
 
 	// Put the prompt “$: “ back out
 	flushPrompt();
@@ -329,6 +388,10 @@ int main(int argc, char * argv[]) {
 	/* set up the TCP Client socket  */
 	int socketNum = 0; //socket descriptor
 	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
+
+	// Save the client handle and handle length
+	clientHandle = argv[1];
+	clientHandleLength = strlen(argv[1]);
 
 	clientControl(socketNum, argv[1]);
 

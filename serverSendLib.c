@@ -51,7 +51,7 @@ void validateAndAddClientHandle(int clientSocket, uint8_t *payload, int payloadL
 	sendPDU(clientSocket, dataBuffer, lengthOfData);
 }
 
-void sendUnicastOnError(int clientSocket, uint8_t *handleBuffer, uint8_t handleLength) {
+void sendCastOnError(int clientSocket, uint8_t *handleBuffer, uint8_t handleLength) {
 	// 1 byte for the flag, 1 byte for the handle length, and space for the handle itself
 	uint8_t lengthOfData = 2 + handleLength;
 	uint8_t dataBuffer[lengthOfData];
@@ -64,74 +64,114 @@ void sendUnicastOnError(int clientSocket, uint8_t *handleBuffer, uint8_t handleL
 	sendPDU(clientSocket, dataBuffer, lengthOfData);
 }
 
-/**
- * Send a unicast to the provided client, if valid. Returns an error message to the client in the event the 
- * 
- * @param clientSocket The socket that the client is currently connected to on the server
- * @param payload Pointer to the memory location of the message payload
- * @param payloadLength The length of the payload
+/*
+ * Recursive function to send the provided text message to each of the recipient clients, returns the length of text message
+ *
+ * @param clientSocket The socket that the SENDING client is connected to
+ * @param payloadStart Pointer to where in the payload the information for the current destination client is
+ * @param payloadLengthFromStart The remaining amount of space in the buffer relative to the payloadStart position
+ * @param dataBuffer The buffer to send to the destination client
+ * @param lengthOfData The amount of data inside the dataBuffer
+ * @param handlesRemaining The remaining amount of destination handles that are still in the payload after this one
  */
-void sendUnicast(int clientSocket, uint8_t *payload, int payloadLength) {
+int sendCastToHandle(
+	int clientSocket, 
+	uint8_t *payloadStart, 
+	int payloadLengthFromStart, 
+	uint8_t *dataBuffer,
+	int lengthOfData,
+	int handlesRemaining
+) {
 	// Get the handle length for the client being SENT TO
 	uint8_t handleLength;
-	memcpy(&handleLength, payload, 1);
+	memcpy(&handleLength, payloadStart, 1);
 
 	uint8_t handleBuffer[handleLength];
-	memcpy(handleBuffer, payload + 1, handleLength);
+	memcpy(handleBuffer, payloadStart + 1, handleLength);
 
-	// Immediately check if the handleLength is too large
+	int lengthOfText;
+	int lengthOfHandleInformation = handleLength + 1;
+	// Base case: If the number of handles remaining is 0 (this is the last one), then the text is found right after this handle
+	if (handlesRemaining == 0) {
+		lengthOfText = payloadLengthFromStart - lengthOfHandleInformation;
+		memcpy(dataBuffer + lengthOfData, payloadStart + lengthOfHandleInformation, lengthOfText);
+	// Otherwise, recurse to continue searching further into the pdu for the text message
+	} else {
+		lengthOfText = sendCastToHandle(
+			clientSocket,
+			payloadStart + lengthOfHandleInformation,
+			payloadLengthFromStart - lengthOfHandleInformation,
+			dataBuffer,
+			lengthOfData,
+			handlesRemaining - 1
+		);
+	}
+
+	// Check if the handleLength is too large to send to
 	if (handleLength > MAX_HANDLE_LEN) {
 		// debug
 		printf("Client handle is too large, failed to send\n");
 
-		sendUnicastOnError(clientSocket, handleBuffer, handleLength);
-		return;
+		sendCastOnError(clientSocket, handleBuffer, handleLength);
+		return lengthOfText;
 	}
 
 	// format the handle, get the socket it's attached to (if any)
 	uint8_t handle[100] = {0};
-	formatHandle(handle, payload + 1, handleLength);
+	formatHandle(handle, payloadStart + 1, handleLength);
 
 	int socket = getSocketFromHandle(handle);
 	if (socket == -1) {
 		// debug
 		printf("Failed to get the client socket from the handle, failed to send\n");
 
-		sendUnicastOnError(clientSocket, handleBuffer, handleLength);
-		return;
+		sendCastOnError(clientSocket, handleBuffer, handleLength);
+		return lengthOfText;
 	}
 
-	// Valid client handle and active socket, so send the message to them
-	// First, determine how long the message is, then copy its contents to a buffer
-	uint8_t headerLength = handleLength + 1;
-	uint8_t messageLength = payloadLength - headerLength;
-	uint8_t messageBuffer[messageLength];
-	memcpy(messageBuffer, payload + headerLength, messageLength);
+	// Finally, send the PDU to the destination client
+	sendPDU(socket, dataBuffer, lengthOfData + lengthOfText);
+	
+	return lengthOfText;
+}
 
-	uint8_t fromClientHandleBuffer[100];
-	int fromClientHandleLength = getHandleFromSocket(clientSocket, fromClientHandleBuffer);
-	if (fromClientHandleLength == -1) {
-		// debug
-		printf("Failed to get the from client handle from the socket, failed to send\n");
+/**
+ * Extracts the sending client's handle, handlelength and number of handles to send to from the payload. Then, sends the message to valid handles
+ * 
+ * @param clientSocket The socket that the client is currently connected to on the server
+ * @param payload Pointer to the memory location of the message payload
+ * @param payloadLength The length of the payload
+ * @param flag The cast type (Unicast or multicast)
+ */
+void sendCasts(int clientSocket, uint8_t *payload, int payloadLength, int flag) {
+	uint8_t dataBuffer[1400];
+	int lengthOfData = 0;
 
-		sendUnicastOnError(clientSocket, handleBuffer, handleLength);
-		return;
-	}
+	// Get the handle length for the sending client
+	uint8_t handleLength;
+	memcpy(&handleLength, payload, 1);
 
-	// Finally, build the PDU to send to the client
-	// 1 byte for the flag, 1 byte for the fromClient handle length, then space for the handle and message
-	uint8_t lengthOfData = 2 + fromClientHandleLength + messageLength;
-	uint8_t dataBuffer[lengthOfData];
+	// retrieve the amount of handles that are included in this cast (found after the sending handle)
+	uint8_t handleCount;
+	memcpy(&handleCount, payload + 1 + handleLength, 1);
 
-	memcpy(dataBuffer, &UNICAST_FLAG, 1);
-	memcpy(dataBuffer + 1, &fromClientHandleLength, 1);
-	memcpy(dataBuffer + 2, fromClientHandleBuffer, fromClientHandleLength);
-	memcpy(dataBuffer + 2 + fromClientHandleLength, messageBuffer, messageLength);
+	printf("Handle length: %d  Handle count: %d\n", handleLength, handleCount);
 
-	sendPDU(socket, dataBuffer, lengthOfData);
+	// Copy the flag, sending handle length and handle into the dataBuffer, adjust lengthOfData accordingly
+	memcpy(dataBuffer, &flag, 1);
+	memcpy(dataBuffer + 1, &handleLength, 1);
+	memcpy(dataBuffer + 2, payload + 1, handleLength);
 
-	// debug
-	// printf("Successfully send PDU to the recipient\n");
+	// Send the message to the provided destination clients
+	lengthOfData = 2 + handleLength; // 1 byte for the flag, 1 byte for handle length, then space for the handle itself
+	sendCastToHandle(
+		clientSocket,
+		payload + lengthOfData,
+		payloadLength - lengthOfData,
+		dataBuffer,
+		lengthOfData,
+		handleCount - 1
+	);
 }
 
 // Helper function for sendHandles, sends the packet containing the TOTAL_HANDLES_FLAG
