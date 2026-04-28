@@ -93,7 +93,7 @@ void processMsgFromServer(int socketNum) {
 		}
 	} else {
 		// Server terminated, so exit the program
-		printf("Server terminated");
+		printf("Server Terminated");
 		exit(0);
 	}
 }
