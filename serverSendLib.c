@@ -110,7 +110,7 @@ int sendCastToHandle(
 	// Check if the handleLength is too large to send to
 	if (handleLength > MAX_HANDLE_LEN) {
 		// debug
-		printf("Client handle is too large, failed to send\n");
+		// printf("Client handle is too large, failed to send\n");
 
 		sendCastOnError(clientSocket, handleBuffer, handleLength);
 		return lengthOfText;
@@ -123,7 +123,7 @@ int sendCastToHandle(
 	int socket = getSocketFromHandle(handle);
 	if (socket == -1) {
 		// debug
-		printf("Failed to get the client socket from the handle, failed to send\n");
+		// printf("Failed to get the client socket from the handle, failed to send\n");
 
 		sendCastOnError(clientSocket, handleBuffer, handleLength);
 		return lengthOfText;
@@ -155,7 +155,8 @@ void sendCasts(int clientSocket, uint8_t *payload, int payloadLength, int flag) 
 	uint8_t handleCount;
 	memcpy(&handleCount, payload + 1 + handleLength, 1);
 
-	printf("Handle length: %d  Handle count: %d\n", handleLength, handleCount);
+	// debug
+	// printf("Handle length: %d  Handle count: %d\n", handleLength, handleCount);
 
 	// Copy the flag, sending handle length and handle into the dataBuffer, adjust lengthOfData accordingly
 	memcpy(dataBuffer, &flag, 1);
@@ -172,6 +173,40 @@ void sendCasts(int clientSocket, uint8_t *payload, int payloadLength, int flag) 
 		lengthOfData,
 		handleCount - 1
 	);
+}
+
+/**
+ * Sends the message in the payload to all active clients (excluding the sending client)
+ * 
+ * @param payload Pointer to the memory location of the message payload
+ * @param payloadLength The length of the payload
+ */
+void sendBroadcast(uint8_t *payload, int payloadLength) {
+	// Get the handle length for the sending client
+	uint8_t handleLength;
+	memcpy(&handleLength, payload, 1);
+
+	// Format the handle for cross-referancing with entries in the handle table
+	uint8_t handle[100] = {0};
+	formatHandle(handle, payload + 1, handleLength);
+
+	// Create the broadcast pdu to send to each valid client (will contain all the information found in the payload + 1 byte for the flag)
+	uint8_t lengthOfData = payloadLength + 1;
+	uint8_t dataBuffer[lengthOfData];
+	memcpy(dataBuffer, &BROADCAST_FLAG, 1); // 1 byte for the flag
+	memcpy(dataBuffer + 1, payload, payloadLength); // Copy the contents of the payload over
+	
+	int socket = 0;
+	int index = 0;
+	// handleLength will be -1 when there are no more entries to check for
+	while ((socket = getSocketIfActiveAndUnique(index, handle)) != -1) {
+		// If the returned handleLength isn't 0, means that the entry at this index in handleTable is active
+		// Also need to check and make sure that 
+		if (socket != 0) {
+			sendPDU(socket, dataBuffer, lengthOfData);
+		}
+		index += 1;
+	}
 }
 
 // Helper function for sendHandles, sends the packet containing the TOTAL_HANDLES_FLAG
@@ -193,6 +228,7 @@ void sendIndividualHandles(int clientSocket) {
 	int handleLength = 0;
 	int index = 0;
 	uint8_t handleBuffer[100];
+
 	// handleLength will be -1 when there are no more entries to check for
 	while ((handleLength = getHandleIfActive(index, handleBuffer)) != -1) {
 		// If the returned handleLength isn't 0, means that the entry at this index in handleTable is active

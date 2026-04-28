@@ -8,8 +8,8 @@
 /**
  * Terminates the program with an error message in the event the server deems the handle invalid (called when receiving a flag = 2 from the client)
  */
-void onRecvBadHandle() {
-    printf("Error: Invalid handle, please try again\n");
+void onRecvBadHandle(char *handle) {
+    printf("Handle already in use: %s\n", handle);
     exit(1);
 }
 
@@ -47,7 +47,7 @@ void onRecvCastError(uint8_t *dataBuffer) {
     handleBuffer[handleLength] = '\0';
 
     // Print out the message
-    printf("Client with the following handle does not exist: %s\n", handleBuffer);
+    printf("Client with handle %s does not exist\n", handleBuffer);
 }
 
 void onRecvTotalHandles(uint8_t *dataBuffer) {

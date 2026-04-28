@@ -61,13 +61,17 @@ void processMsgFromServer(int socketNum) {
 		if (flag == HANDLE_GOOD_FLAG) {
 			flushPrompt();
 		} else if (flag == HANDLE_BAD_FLAG) {
-			onRecvBadHandle();
+			onRecvBadHandle(clientHandle);
 			flushPrompt();
 		} else if (flag == UNICAST_FLAG) {
 			printf("\n");
 			onRecvMessage(dataBuffer + 1, messageLen - 1);
 			flushPrompt();
 		} else if (flag == MULTICAST_FLAG) {
+			printf("\n");
+			onRecvMessage(dataBuffer + 1, messageLen - 1);
+			flushPrompt();
+		} else if (flag == BROADCAST_FLAG) {
 			printf("\n");
 			onRecvMessage(dataBuffer + 1, messageLen - 1);
 			flushPrompt();
@@ -120,6 +124,7 @@ int readFromStdinText(uint8_t *buffer, uint8_t *endOnNewline) {
 	while (aChar != '\n') {
 		// Return an error if there's not enough space in the buffer
 		if (inputLen == MAXBUF) {
+			printf("Not enough buffer space when reading from stdin\n");
 			return -1;
 		}
 
@@ -147,6 +152,7 @@ int readFromStdinSplit(uint8_t *buffer, uint8_t *endOnNewline) {
 	while (aChar != '\n' && aChar != ' ') {
 		// Return an error if there's not enough space in the buffer
 		if (inputLen == MAXBUF) {
+			printf("Not enough buffer space when reading from stdin\n");
 			return -1;
 		}
 
@@ -196,17 +202,20 @@ int parseHandleFromStdin(uint8_t *buffer, uint8_t *endOnNewline, int bufferOffse
 	uint8_t handleBuffer[MAXBUF];
 	int handleLength = 0;
 	if ((handleLength = readFromStdinSplit(handleBuffer, endOnNewline)) == -1) {
+		// Error message is already handled by readFromStdinSplit method
 		return -1;
 	}
 
 	// A valid handle must be at least 1 character and at most 100 characters
 	if (handleLength < 1 || handleLength > 100) {
+		printf("Invalid command format, all handles must be between 1 and 100 characters\n");
 		return -1;
 	}
 
 	// Account for the length field in the handle buffer
 	int handleBufferLength = handleLength + 1;
 	if (handleBufferLength > MAXBUF - bufferOffset) {
+		printf("Input too large, max of 1400 input characters\n");
 		return -1;
 	}
 	
@@ -249,9 +258,12 @@ int parseStdinHeaderMulticast(uint8_t *buffer, uint8_t *endOnNewline) {
 	uint8_t handleCount;
 	memcpy(&handleCount, handleBuffer, 1);
 	handleCount -= '0';
-	printf("Handle count: %d\n", handleCount);
+
+	// debug
+	// printf("Handle count: %d\n", handleCount);
 
 	if (handleCount < 2 || handleCount > 9) {
+		printf("Number of handles for multicast must be between 2 and 9\n");
 		return -1;
 	}
 
@@ -268,12 +280,18 @@ int parseStdinHeaderMulticast(uint8_t *buffer, uint8_t *endOnNewline) {
 	return bufferOffset;
 }
 
+// Broadcast header will only contain the flag (set in parseStdinHeader) and the handle length + name details
+int parseStdinHeaderBroadcast(uint8_t *buffer, uint8_t *endOnNewline) {
+	return addHandleToHeader(buffer);
+}
+
 // Returns the length of the header or -1 if an error is encountered
 int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
 	uint8_t commandBuffer[MAXBUF];
 	int commandBufferLength = 0;
 	// expecting the command length to be exactly two. Immediate errors if it's not
 	if ((commandBufferLength = readFromStdinSplit(commandBuffer, endOnNewline)) != 2) {
+		printf("Invalid command format\n");
 		return -1;
 	}
 
@@ -288,19 +306,29 @@ int parseStdinHeader(uint8_t *headerBuffer, uint8_t *endOnNewline) {
 	} else if (memcmp(commandBuffer, "%C", 2) == 0 || memcmp(commandBuffer, "%c", 2) == 0) {
 		flag = MULTICAST_FLAG;
 		handleBufferLength = parseStdinHeaderMulticast(handleBuffer, endOnNewline);
+	// Broadcast
+	} else if (memcmp(commandBuffer, "%B", 2) == 0 || memcmp(commandBuffer, "%b", 2) == 0) {
+		flag = BROADCAST_FLAG;
+		handleBufferLength = parseStdinHeaderBroadcast(handleBuffer, endOnNewline);
 	// Get active handles
 	} else if (memcmp(commandBuffer, "%L", 2) == 0 || memcmp(commandBuffer, "%l", 2) == 0) {
 		flag = GET_HANDLES_FLAG;
-		// No handles are expected on the %L command, so set it's length to 0
+		// No handles are expected on the %L command, so set its length to 0
 		handleBufferLength = 0;
 	} else {
 		// Invalid command
+		printf("Invalid command\n");
 		return -1;
 	}
 
-	// Determine if the contents won't exceed the size of the header buffer
 	int headerBufferLength = 1 + handleBufferLength;
-	if (handleBufferLength == -1 || headerBufferLength > MAXBUF) {
+	// Determine if anhy errors occured while parsing the header
+	if (handleBufferLength == -1) {
+		return -1;
+	}
+	// Determine if the contents won't exceed the size of the header buffer
+	if (headerBufferLength > MAXBUF) {
+		printf("Input too large, max of 1400 input characters\n");
 		return -1;
 	}
 
@@ -329,7 +357,7 @@ void processStdin(int socketNum) {
 		clearStdin(endOnNewline);
 
 		// debug
-		printf("Error: Failed to parse the stdin header\n");
+		// printf("Error: Failed to parse the stdin header\n");
 
 		// Put the prompt “$: “ back out
 		flushPrompt();
@@ -342,7 +370,7 @@ void processStdin(int socketNum) {
 		clearStdin(endOnNewline);
 
 		// debug
-		printf("Error: Failed to parse the stdin text\n");
+		// printf("Error: Failed to parse the stdin text\n");
 
 		// Put the prompt “$: “ back out
 		flushPrompt();
@@ -353,7 +381,7 @@ void processStdin(int socketNum) {
 	if (headerLength + textLength > 1400) {
 		clearStdin(endOnNewline);
 
-		printf("Error: Input too large, max of 1400 input characters\n");
+		printf("Input too large, max of 1400 input characters\n");
 
 		// Put the prompt “$: “ back out
 		flushPrompt();
@@ -398,14 +426,19 @@ void checkArgs(int argc, char * argv[]) {
 
 int main(int argc, char * argv[]) {
 	checkArgs(argc, argv);
-	
-	/* set up the TCP Client socket  */
-	int socketNum = 0; //socket descriptor
-	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
 
 	// Save the client handle and handle length
 	clientHandle = argv[1];
 	clientHandleLength = strlen(argv[1]);
+	// Immediate check on the length of the handle
+	if (clientHandleLength > 100) {
+		printf("Invalid handle, handle longer than 100 characters: %s\n", clientHandle);
+		exit(1);
+	}
+	
+	/* set up the TCP Client socket  */
+	int socketNum = 0; //socket descriptor
+	socketNum = tcpClientSetup(argv[2], argv[3], DEBUG_FLAG);
 
 	clientControl(socketNum, argv[1]);
 

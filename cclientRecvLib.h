@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-void onRecvBadHandle();
+void onRecvBadHandle(char *clientHandle);
 void onRecvMessage(uint8_t *dataBuffer, int lengthOfData);
 void onRecvCastError(uint8_t *dataBuffer);
 void onRecvTotalHandles(uint8_t *dataBuffer);

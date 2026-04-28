@@ -5,6 +5,7 @@
 
 void validateAndAddClientHandle(int clientSocket, uint8_t *payload, int payloadLength);
 void sendCasts(int clientSocket, uint8_t *payload, int payloadLength, int flag);
+void sendBroadcast(uint8_t *payload, int payloadLength);
 void sendHandles(int clientSocket);
 
 #endif

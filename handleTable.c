@@ -50,12 +50,12 @@ int checkAddToHandleTable(uint8_t handle[]) {
         if (memcmp(entry.handle, handle, MAX_HANDLE_LEN) == 0) {
             if(entry.active == ACTIVE_HANDLE) {
                 // debug
-                printf("There is already an active client with handle: %s\n", handle);
+                // printf("There is already an active client with handle: %s\n", handle);
 
                 return -1;
             } else {
                 // debug
-                printf("Reactivating an old entry with handle: %s\n", handle);
+                // printf("Reactivating an old entry with handle: %s\n", handle);
 
                 return index;
             }
@@ -63,7 +63,7 @@ int checkAddToHandleTable(uint8_t handle[]) {
         index += 1;
     }
     // debug
-    printf("Adding a new entry with handle: %s\n", handle);
+    // printf("Adding a new entry with handle: %s\n", handle);
 
     return index;
 }
@@ -77,7 +77,7 @@ void growHandleTable(){
     handleTable = realloc(handleTable, maxUntilHandleTableResize * sizeof(struct handleEntry));
 
     // debug
-    printf("Growing handle table to size: %d\n", maxUntilHandleTableResize);
+    // printf("Growing handle table to size: %d\n", maxUntilHandleTableResize);
 }
 
 /**
@@ -102,10 +102,10 @@ void addToHandleTable(uint8_t handle[], uint8_t handleLength, int socket, int in
     handleTable[index] = *entry;
 
     // debug
-    printf("Handle: %s\n", entry->handle);
-    printf("HandleLength: %d\n", entry->handleLength);
-    printf("Socket: %d\n", entry->socket);
-    printf("Active: %d\n", entry->active);
+    // printf("Handle: %s\n", entry->handle);
+    // printf("HandleLength: %d\n", entry->handleLength);
+    // printf("Socket: %d\n", entry->socket);
+    // printf("Active: %d\n", entry->active);
 }
 
 /**
@@ -125,7 +125,7 @@ void removeFromHandleTable(int socket) {
             activeHandles -= 1;
 
             // debug
-            printf("Successfully deactivated handle: %s\n", entry.handle);
+            // printf("Successfully deactivated handle: %s\n", entry.handle);
             return;
         }
         index += 1;
@@ -174,6 +174,28 @@ int getHandleIfActive(int index, uint8_t handleBuffer[]) {
     if (entry.active == ACTIVE_HANDLE) {
         memcpy(handleBuffer, entry.handle, MAX_HANDLE_LEN);
         return entry.handleLength;
+    } else {
+        return 0;
+    }
+}
+
+/**
+ * Retrieves the handle at the given INDEX in handleTable (if exists). 
+ * Returns the socket number or 0 if the entry is inactive and/or the handle names match (used for broadcase)
+ * Returns -1 if the index would be out of bounds
+ * 
+ * @param index The index in the handleTable to search for
+ * @param handleBuffer Where sending handle name to compare the entry handle with
+ */
+int getSocketIfActiveAndUnique(int index, uint8_t handleBuffer[]) {
+    // Check if the index is out of bounds
+    if (index >= addedToHandleTable) {
+        return -1;
+    }
+
+    struct handleEntry entry = handleTable[index];
+    if (entry.active == ACTIVE_HANDLE && memcmp(entry.handle, handleBuffer, MAX_HANDLE_LEN) != 0) {
+        return entry.socket;
     } else {
         return 0;
     }

@@ -62,13 +62,15 @@ void serverControl(int portNumber) {
 // Determine which function to use for processing the message from the client
 void processMsgFromClient(int clientSocket, uint8_t *dataBuffer, int messageLen) {
 	uint8_t flag = getFlag(dataBuffer);
-	printf("Flag: %d\n", flag);
+	// printf("Flag: %d\n", flag);
 	if (flag == CLIENT_HANDLE_FLAG) {
 		validateAndAddClientHandle(clientSocket, dataBuffer + 1, messageLen - 1);
 	} else if (flag == UNICAST_FLAG) {
 		sendCasts(clientSocket, dataBuffer + 1, messageLen - 1, UNICAST_FLAG);
 	} else if (flag == MULTICAST_FLAG) {
 		sendCasts(clientSocket, dataBuffer + 1, messageLen - 1, MULTICAST_FLAG);
+	} else if (flag == BROADCAST_FLAG) {
+		sendBroadcast(dataBuffer + 1, messageLen - 1);
 	} else if (flag == GET_HANDLES_FLAG) {
 		sendHandles(clientSocket);
 	}
@@ -88,12 +90,14 @@ void recvFromClient(int clientSocket)
 
 	if (messageLen > 0)
 	{
-		printf("Socket %d: Message received, length: %d Data: %s\n", clientSocket, messageLen, dataBuffer);
+		// debug
+		// printf("Socket %d: Message received, length: %d Data: %s\n", clientSocket, messageLen, dataBuffer);
 		processMsgFromClient(clientSocket, dataBuffer, messageLen);
 	}
 	else
 	{
-		printf("Socket %d: Connection closed by other side\n", clientSocket);
+		// debug
+		// printf("Socket %d: Connection closed by other side\n", clientSocket);
 
 		// remove from the handle table (if it was added) and poll set, then closes the socket
 		removeFromHandleTable(clientSocket);
